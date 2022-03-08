@@ -2,6 +2,13 @@
 """
 Created on Tue Jan 18 05:39:20 2022
 
+Codes generate grids goodness of fit maps for different dstribution and duration
+1. Read goodness of fit for each grid, create a matrix of z value
+2. replace |z|<1.64 with zeros and |z|>1.64 with 1  (0 mean acceptable goodness of fit)
+3. write the matrix into a tif file for each distribution and duration
+4. Generate summary table of portion of grids with nonacceptable goodness of fit
+5. Generate maps
+
 @author: sardekani
 """
 
@@ -10,6 +17,7 @@ import os
 import numpy as np
 from osgeo import gdal
 from mpl_toolkits.basemap import Basemap
+import mpl_toolkits as mpl
 import matplotlib.pyplot as plt 
 import matplotlib.patches as mpatches
 import matplotlib.lines as mlines
@@ -17,6 +25,7 @@ import geopandas as gpd
 import sys
 sys.path.append("C:/Users/SARDEKANI/Documents/GitHub/DARF/");
 import BasicFunction_py3 as BF
+import copy
 
 
 
@@ -40,6 +49,8 @@ distAr=['glo','gev','gno', 'pe3', 'gpa']
 
 # Create a matirx of 0 and 1 for each duration and distribution
 # 1 represents grid with abs goodness of fit larger than 1.64
+
+TotFail=[]
 for dur in durationAr:
     # Generate zero matrix of size nrow X Ncol
     mat_glo=np.zeros((nrow,ncol))
@@ -67,23 +78,35 @@ for dur in durationAr:
         mat_pe3[row,col]=df.pe3.iloc[i]
         mat_gpa[row,col]=df.gpa.iloc[i]
         
+    
     # write matrix into a tif file for visualization
     for dist in distAr:
-        FileName=direc+dur+'_'+dist+'_goodnessfit_matrix.tif'
-        BF.CreateMatrixFileFloat(FileName,globals()['mat_%s' % dist], ncol, nrow, gt, proj)
-
+        TotFail.append(sum(globals()['mat_%s' % dist].flatten()))
+        # FileName=direc+dur+'_'+dist+'_goodnessfit_matrix.tif'
+        # BF.CreateMatrixFileFloat(FileName,globals()['mat_%s' % dist], ncol, nrow, gt, proj)
+        
+TotFailAr=np.array(TotFail).reshape(11,5)
+PorFailAr=TotFailAr/len(globals()['mat_%s' % dist].flatten())
+#portion of grids with nonacceptable goodness of fit
+df_gf_summ=pd.DataFrame(PorFailAr, columns=distAr, index=durationAr)
+outcsv="P:/2021/ArizonaStorm/Regionality/goodnessFitSummary.csv"
+df_gf_summ.to_csv(outcsv)
 
 
 # Generate Map 
 irow=[0,0,1,1,2,2]
 icol=[0,1,0,1,0,1]
+irow=[0,0,0,1,1,1]
+icol=[0,1,2,0,1,2]
+textAr=['(a)','(b)','(c)','(d)','(e)']
+textAr=['GLO','GEV','GNO', 'PE3', 'GPA']
 BB=[30,39,-115,-107]
 StateShp='P:/2021/ArizonaStorm/GIS/shp/ArizonaBoundary'
 Huc8Shp='P:/2021/ArizonaStorm/GIS/shp/HUC8_ClipHUC6Arizona_HUC12Summary'
 for dur in durationAr:
     # create figure with array of axes
-    fig, axs = plt.subplots(3, 2)
-    fig.set_size_inches(12, 18)  #set it big enough for all subplots
+    fig, axs = plt.subplots(2, 3)
+    fig.set_size_inches(18, 11)  #set it big enough for all subplots
     # cmap=colors.ListedColormap(['lightskyblue', 'limegreen', 'tomato'])
 
     for i, dist in enumerate(distAr):
@@ -110,24 +133,28 @@ for dur in durationAr:
         x,y = np.mgrid[xmin:xmax+xres:xres, ymax+yres:ymin:yres]
         x,y = m(x,y)
         
-        cmap = plt.get_cmap('rainbow')
+        # cmap = plt.get_cmap('rainbow')
+        cmap = copy.copy(plt.cm.get_cmap("rainbow"))
         cmap.set_under('white')
         
         eps = np.spacing(0.0)
         m.pcolormesh( x,y, data.T, cmap=cmap, vmin=eps)
         
+        # Place text to upper left corner
+        axs[irow[i]][icol[i]].annotate(textAr[i], xy=(0.1, 0.9), xycoords='axes fraction',fontsize=18, fontweight='bold')
+        
         # Title
         title='distribution: '+dist+' - duration: '+dur+' - Goodness of fit'
-        axs[irow[i]][icol[i]].set_title(title)
+        # axs[irow[i]][icol[i]].set_title(title)
     
     # Add legend
     State_patch = mpatches.Patch(facecolor='white', edgecolor='blue', label='Arizona Boundary')
     HUC8_patch= mpatches.Patch(facecolor='white', edgecolor='darkgray', label='HUC08')
     axs[irow[i]][icol[i]].legend(loc='upper center', bbox_to_anchor=(1.45, 1), handles=[State_patch,HUC8_patch], fontsize=18)
 
-    fig.delaxes(axs[2,1])
+    fig.delaxes(axs[1,2])
     # plt.show()
-    img="P:/2021/ArizonaStorm/Regionality/Map/GoodnessofFit_"+dur+"1.jpg"
+    img="P:/2021/ArizonaStorm/Regionality/Map/GoodnessofFit_"+dur+"_memo.jpg"
     plt.savefig(img,bbox_inches='tight', dpi=200)
 
             
